@@ -1,0 +1,54 @@
+name: "02 Docker train and API"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "wine_project/**"
+      - "environment.yml"
+      - "requirements.txt"
+      - "Dockerfile.*"
+      - ".dockerignore"
+      - "check_api.py"
+      - ".github/workflows/02_docker.yml"
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash -el {0}
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          python-version: "3.11"
+          miniforge-version: latest
+          activate-environment: mlops26
+          environment-file: environment.yml
+      - name: Build training image
+        run: docker build --platform linux/amd64 -f Dockerfile.train -t wine-train:ci .
+      - name: Build API image
+        run: docker build --platform linux/amd64 -f Dockerfile.api -t wine-api:ci .
+      - name: Create temporary model volume
+        run: docker volume create wine-ci-models
+      - name: Train and save model to volume
+        run: docker run --platform linux/amd64 --rm -v wine-ci-models:/models wine-train:ci
+      - name: Start API with saved model
+        run: >-
+          docker run --platform linux/amd64 -d --name wine-ci-api
+          -p 127.0.0.1:8000:8000
+          -v wine-ci-models:/models:ro
+          -e MODEL_PATH=/models/model.pkl wine-api:ci
+      - name: Wait for API and check a prediction
+        run: python check_api.py
+      - name: Show API logs
+        if: ${{ always() }}
+        run: docker logs wine-ci-api 2>&1 || true
+      - name: Remove temporary resources
+        if: ${{ always() }}
+        run: |
+          docker rm -f wine-ci-api 2>/dev/null || true
+          docker volume rm wine-ci-models 2>/dev/null || true
