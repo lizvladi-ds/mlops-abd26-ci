@@ -1,0 +1,8 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN python -m pip install --no-cache-dir -r requirements.txt
+COPY wine_project/ wine_project/
+ENV MODEL_PATH=/models/model.pkl
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "wine_project.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
