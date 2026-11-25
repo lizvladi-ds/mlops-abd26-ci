@@ -1,0 +1,57 @@
+name: "05 Training with inputs"
+on:
+  workflow_dispatch:
+    inputs:
+      c:
+        description: "LogisticRegression C"
+        type: choice
+        options: ["0.1", "1.0", "10.0"]
+        default: "1.0"
+      save_model:
+        description: "Save model and test CSV as an artifact"
+        type: boolean
+        default: true
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash -el {0}
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          python-version: "3.11"
+          miniforge-version: latest
+          activate-environment: mlops26
+          environment-file: environment.yml
+      - run: python -m pip install -r requirements.txt
+      - name: Train with selected C
+        env:
+          MODEL_C: ${{ inputs.c }}
+        run: python -m wine_project.train --c "$MODEL_C" --output-dir artifacts
+      - name: Add metrics to Summary
+        run: |
+          echo '### Wine validation metrics' >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat artifacts/metrics.json >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Always save metrics after successful training
+        uses: actions/upload-artifact@v4
+        with:
+          name: experiment-metrics
+          path: artifacts/metrics.json
+          retention-days: 7
+      - name: Optionally save trained model
+        if: ${{ inputs.save_model }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: experiment-model
+          path: |
+            artifacts/model.pkl
+            artifacts/test.csv
+          retention-days: 7
